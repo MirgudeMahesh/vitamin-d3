@@ -172,8 +172,7 @@ Once the camp concludes, we’ll share a brief summary report highlighting the n
 
 Thank you for partnering with Pulse Pharmaceuticals in this mission to make India Vitamin D deficiency-free.
 
-Team Pulse
-Pulse Pharmaceuticals
+Team Pulse Pharmaceuticals
 Your Partner in Vitamin D Management
 `.trim();
 

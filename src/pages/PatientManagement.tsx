@@ -413,11 +413,10 @@ Dear Dr. ${doctor.name},
 Please find below the summary of today’s Vitamin D Screening Camp conducted at your clinic:
 
 • Total patients screened: ${summaryForm.total_patients}
-• Patients with Vitamin D Inadequacy: ${summaryForm.inadequate_patients}
-• Patients with Vitamin D Adequacy: ${summaryForm.adequate_patients}
+• Patients with Inadequate Vitamin D: ${summaryForm.inadequate_patients}
+• Patients with Adequate Vitamin D: ${summaryForm.adequate_patients}
 
 Thank you for your kind cooperation and for partnering with Pulse Pharmaceuticals in this important public health initiative.
-
 Team Pulse Pharmaceuticals
 Your Partner in managing Vitamin D Deficiency
 `.trim();
