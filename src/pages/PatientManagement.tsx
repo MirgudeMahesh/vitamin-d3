@@ -1304,7 +1304,7 @@ const handleEditPatient = useCallback((patient: Patient) => {
       </div>
 
       <div>
-        <Label>No. of Units Sold</Label>
+        <Label>No. of Units Sold(Deksel Nano 60K)</Label>
         <Input
           type="number"
           value={summaryForm.units_sold}
@@ -1316,7 +1316,7 @@ const handleEditPatient = useCallback((patient: Patient) => {
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mt-3">
         <div>
-          <Label>Deksel Nano Syrup</Label>
+          <Label>No. of Units Sold (Deksel Neo 60K)</Label>
           <Input
             type="number"
             value={summaryForm.deksel_nano_syrup}
@@ -1330,7 +1330,7 @@ const handleEditPatient = useCallback((patient: Patient) => {
         </div>
 
         <div>
-          <Label>Deksel 2K Syrup</Label>
+          <Label>No. of Units Sold (Deksel 2K Spray)</Label>
           <Input
             type="number"
             value={summaryForm.deksel_2k_syrup}
@@ -1344,7 +1344,7 @@ const handleEditPatient = useCallback((patient: Patient) => {
         </div>
 
         <div>
-          <Label>Deksel Neo Syrup</Label>
+          <Label>No. of Units Sold (Deksel 1K Spray)</Label>
           <Input
             type="number"
             value={summaryForm.deksel_neo_syrup}
