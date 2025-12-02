@@ -394,7 +394,8 @@ const handleCreateCamp = useCallback(
 
           {/* Consent Form */}
           <div>
-            <Label htmlFor="consent-file">Upload Consent Form</Label>
+            <Label htmlFor="consent-file">Upload Consent Form<span className="text-destructive">*</span>
+            </Label>
             <Input
               id="consent-file"
               type="file"
@@ -415,7 +416,7 @@ const handleCreateCamp = useCallback(
           <div className="flex justify-end">
             <Button
               type="submit"
-              disabled={loading || !selectedDoctorId || !campDate}
+              disabled={loading || !selectedDoctorId || !campDate || consentFile === null }
               className="bg-gradient-to-r from-primary to-medical-teal hover:opacity-90"
             >
               {loading ? "Creating..." : "Create Camp"}
