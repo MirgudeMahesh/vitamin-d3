@@ -1,5 +1,5 @@
 // ============================================================
-// CREATECAMPINLINE.TSX - Territory-Based Doctor Filtering
+// CREATECAMPINLINE.TSX - Production Ready (No Territory Dependency)
 // ============================================================
 import { useState, useEffect, useCallback, memo } from "react";
 import { Button } from "@/components/ui/button";
@@ -15,7 +15,7 @@ import {
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
-import { Calendar, Phone, AlertCircle } from "lucide-react";
+import { Calendar, Phone, CheckCircle2 } from "lucide-react";
 
 interface Doctor {
   id: string;
@@ -24,7 +24,6 @@ interface Doctor {
   clinic_name: string | null;
   clinic_address: string | null;
   city: string | null;
-  territory: string | null;
   phone: string;
   whatsapp_number: string | null;
 }
@@ -38,7 +37,6 @@ interface User {
   email: string;
   imacx_id: string;
   loginTime: string;
-  territory?: string; // ✅ Added territory
 }
 
 const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
@@ -54,89 +52,20 @@ const CreateCampInline = memo(({ onSuccess }: Props) => {
   const [loading, setLoading] = useState(false);
   const [loadingDoctors, setLoadingDoctors] = useState(true);
   const [fileError, setFileError] = useState<string | null>(null);
-  const [userTerritory, setUserTerritory] = useState<string | null>(null);
-  const [territoryError, setTerritoryError] = useState<string | null>(null);
   const { toast } = useToast();
 
-  // ✅ Get user from localStorage instead of Supabase Auth
-  const getCurrentUser = useCallback((): User | null => {
-    try {
-      const storedUser = localStorage.getItem("vitaminDUser");
-      if (!storedUser) return null;
-      return JSON.parse(storedUser);
-    } catch (err) {
-      console.error("Error parsing user data:", err);
-      return null;
-    }
-  }, []);
-
-  // ✅ Fetch user's territory from database
-  const fetchUserTerritory = useCallback(async () => {
-    try {
-      const currentUser = getCurrentUser();
-      if (!currentUser) {
-        setTerritoryError("User not found. Please log in again.");
-        return;
-      }
-
-      const { data, error } = await supabase
-        .from("users")
-        .select("territory")
-        .eq("id", currentUser.id)
-        .single();
-
-      if (error) throw error;
-
-      setUserTerritory(data?.territory || null);
-
-      if (!data?.territory) {
-        setTerritoryError(
-          "Your territory is not set. Please contact administrator."
-        );
-      }
-    } catch (err: any) {
-      console.error("Error fetching user territory:", err);
-      setTerritoryError(
-        err?.message || "Failed to fetch your territory information"
-      );
-      toast({
-        title: "Territory Error",
-        description:
-          err?.message || "Failed to fetch your territory information",
-        variant: "destructive",
-      });
-    }
-  }, [getCurrentUser, toast]);
-
-  // ✅ Fetch doctors filtered by user's territory
+  // ✅ Fetch all doctors (no territory filtering)
   const fetchDoctors = useCallback(async () => {
-    if (!userTerritory) {
-      setLoadingDoctors(false);
-      return;
-    }
-// .eq("Territory", userTerritory) (removed)
     try {
-      // 🔑 KEY CHANGE: Filter doctors by territory matching user's territory
       const { data, error } = await supabase
         .from("doctors")
         .select("*")
         .eq("is_selected_by_marketing", true)
-        // ✅ Filter by user's territory
         .order("name");
 
       if (error) throw error;
-
-      if (!data || data.length === 0) {
-        setTerritoryError(
-          `No doctors found in your territory (${userTerritory}).`
-        );
-      } else {
-        setTerritoryError(null);
-      }
-
       setDoctors(data || []);
     } catch (err: any) {
-      console.error("Error fetching doctors:", err);
       toast({
         title: "Error fetching doctors",
         description: err?.message || "Failed to load doctors",
@@ -145,19 +74,11 @@ const CreateCampInline = memo(({ onSuccess }: Props) => {
     } finally {
       setLoadingDoctors(false);
     }
-  }, [userTerritory, toast]);
+  }, [toast]);
 
-  // ✅ Fetch user territory on mount
   useEffect(() => {
-    fetchUserTerritory();
-  }, [fetchUserTerritory]);
-
-  // ✅ Fetch doctors when territory is loaded
-  useEffect(() => {
-    if (userTerritory) {
-      fetchDoctors();
-    }
-  }, [userTerritory, fetchDoctors]);
+    fetchDoctors();
+  }, [fetchDoctors]);
 
   // Handle doctor selection
   const handleDoctorSelect = useCallback(
@@ -267,6 +188,18 @@ Your Partner in Vitamin D Management
     },
     []
   );
+
+  // ✅ Get user from localStorage
+  const getCurrentUser = useCallback((): User | null => {
+    try {
+      const storedUser = localStorage.getItem("vitaminDUser");
+      if (!storedUser) return null;
+      return JSON.parse(storedUser);
+    } catch (err) {
+      console.error("Error parsing user data:", err);
+      return null;
+    }
+  }, []);
 
   // Create camp
   const handleCreateCamp = useCallback(
@@ -390,133 +323,174 @@ Your Partner in Vitamin D Management
 
   return (
     <form onSubmit={handleCreateCamp} className="space-y-6">
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center">
-            <Calendar className="h-5 w-5 mr-2 text-primary" /> Camp Details
+      <Card className="border border-border/40 bg-card shadow-sm hover:shadow-md transition-shadow duration-200">
+        <CardHeader className="border-b border-border/40 pb-4">
+          <CardTitle className="flex items-center text-lg font-semibold text-foreground">
+            <Calendar className="h-5 w-5 mr-2 text-primary" />
+            Camp Details
           </CardTitle>
         </CardHeader>
-        <CardContent className="space-y-4">
-          {/* ✅ Territory Display */}
-          {/* <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
-            <div className="flex items-start gap-2">
-              <AlertCircle className="h-5 w-5 text-blue-600 mt-0.5 flex-shrink-0" />
-              <div>
-                <p className="text-sm font-medium text-blue-900">
-                  Your Territory:{" "}
-                  <span className="font-bold">
-                    {userTerritory || "Loading..."}
-                  </span>
-                </p>
-                <p className="text-xs text-blue-700 mt-1">
-                  You can only create camps with doctors assigned to your territory.
-                </p>
-              </div>
-            </div>
-          </div> removed*/}
 
-
-          {/* ✅ Territory Error Display */}
-          {territoryError && (
-            <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
-              <p className="text-sm text-red-700">{territoryError}</p>
-            </div>
-          )}
-
+        <CardContent className="space-y-6 pt-6">
           {/* Doctor Selection */}
-          <div>
-            <Label htmlFor="doctor-select">
-              Select Doctor <span className="text-destructive">*</span>
+          <div className="space-y-2">
+            <Label htmlFor="doctor-select" className="text-sm font-medium text-foreground">
+              Select Doctor <span className="text-destructive font-bold">*</span>
             </Label>
             <Select
               value={selectedDoctorId}
               onValueChange={handleDoctorSelect}
-              disabled={loadingDoctors || !userTerritory || doctors.length === 0}
+              disabled={loadingDoctors}
             >
-              <SelectTrigger id="doctor-select">
+              <SelectTrigger
+                id="doctor-select"
+                className="w-full border border-input bg-background text-foreground hover:bg-accent hover:text-accent-foreground transition-colors duration-150"
+              >
                 <SelectValue
                   placeholder={
-                    loadingDoctors
-                      ? "Loading doctors..."
-                      : doctors.length === 0
-                        ? "No doctors in your territory"
-                        : "Choose a doctor"
+                    loadingDoctors ? "Loading doctors..." : "Choose a doctor"
                   }
                 />
               </SelectTrigger>
-              <SelectContent>
-                {doctors.map((doctor) => (
-                  <SelectItem key={doctor.id} value={doctor.id}>
-                    {doctor.name} • {doctor.clinic_name}, {doctor.city} •{" "}
-                    {doctor.territory}
-                  </SelectItem>
-                ))}
+              <SelectContent className="max-h-[300px]">
+                {doctors.length > 0 ? (
+                  doctors.map((doctor) => (
+                    <SelectItem key={doctor.id} value={doctor.id}>
+                      <span className="font-medium">{doctor.name}</span>
+                      <span className="text-muted-foreground text-sm">
+                        {" "}
+                        • {doctor.clinic_name}, {doctor.city}
+                      </span>
+                    </SelectItem>
+                  ))
+                ) : (
+                  <div className="p-2 text-sm text-muted-foreground">
+                    No doctors available
+                  </div>
+                )}
               </SelectContent>
             </Select>
-            <p className="text-xs text-muted-foreground mt-1">
+            <p className="text-xs text-muted-foreground">
               {doctors.length} doctor{doctors.length !== 1 ? "s" : ""} available
-              in your territory
             </p>
           </div>
 
-          {/* Auto-filled fields */}
+          {/* Auto-filled Doctor Details */}
           {selectedDoctor && (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 bg-muted/50 rounded-lg">
-              <div>
-                <Label>Specialty</Label>
-                <Input value={selectedDoctor.specialty || "N/A"} readOnly />
-              </div>
-              <div>
-                <Label>Territory</Label>
-                <Input value={selectedDoctor.territory || "N/A"} readOnly />
-              </div>
-              <div>
-                <Label>Doctor Mobile</Label>
-                <div className="relative">
-                  <Phone className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    className="pl-10"
-                    value={selectedDoctor.phone || "N/A"}
-                    readOnly
-                  />
+            <div className="space-y-4 animate-in fade-in-50 duration-200">
+              <div className="border-t border-border/40 pt-4">
+                <h3 className="text-sm font-semibold mb-4 text-foreground flex items-center">
+                  <CheckCircle2 className="h-4 w-4 mr-2 text-green-500" />
+                  Selected Doctor Details
+                </h3>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {/* Row 1 */}
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-medium text-muted-foreground">
+                      Doctor Name
+                    </Label>
+                    <Input
+                      value={selectedDoctor.name || "N/A"}
+                      readOnly
+                      className="bg-muted/50 border-border/40 text-foreground font-medium cursor-not-allowed"
+                    />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-medium text-muted-foreground">
+                      Specialty
+                    </Label>
+                    <Input
+                      value={selectedDoctor.specialty || "N/A"}
+                      readOnly
+                      className="bg-muted/50 border-border/40 text-foreground cursor-not-allowed"
+                    />
+                  </div>
+
+                  {/* Row 2 */}
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-medium text-muted-foreground">
+                      Clinic Name
+                    </Label>
+                    <Input
+                      value={selectedDoctor.clinic_name || "N/A"}
+                      readOnly
+                      className="bg-muted/50 border-border/40 text-foreground cursor-not-allowed"
+                    />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-medium text-muted-foreground">
+                      City
+                    </Label>
+                    <Input
+                      value={selectedDoctor.city || "N/A"}
+                      readOnly
+                      className="bg-muted/50 border-border/40 text-foreground cursor-not-allowed"
+                    />
+                  </div>
+
+                  {/* Row 3 */}
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-medium text-muted-foreground">
+                      Clinic Address
+                    </Label>
+                    <Input
+                      value={selectedDoctor.clinic_address || "N/A"}
+                      readOnly
+                      className="bg-muted/50 border-border/40 text-foreground cursor-not-allowed"
+                    />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-medium text-muted-foreground">
+                      Doctor Mobile
+                    </Label>
+                    <div className="relative">
+                      <Phone className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+                      <Input
+                        value={selectedDoctor.phone || "N/A"}
+                        readOnly
+                        className="pl-10 bg-muted/50 border-border/40 text-foreground cursor-not-allowed"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Row 4 - Editable WhatsApp */}
+                  <div className="md:col-span-2 space-y-1.5">
+                    <Label
+                      htmlFor="whatsapp"
+                      className="text-xs font-medium text-muted-foreground"
+                    >
+                      Doctor WhatsApp Number{" "}
+                      <span className="text-destructive font-bold">*</span>
+                    </Label>
+                    <div className="relative">
+                      <Phone className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+                      <Input
+                        id="whatsapp"
+                        type="tel"
+                        value={doctorWhatsApp}
+                        onChange={(e) => setDoctorWhatsApp(e.target.value)}
+                        placeholder="Enter WhatsApp number"
+                        className="pl-10 border-input bg-background text-foreground placeholder:text-muted-foreground/50 hover:bg-accent/50 focus:ring-2 focus:ring-primary transition-colors duration-150"
+                        required
+                      />
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Include country code (e.g., +91XXXXXXXXXX)
+                    </p>
+                  </div>
                 </div>
-              </div>
-              <div>
-                <Label>Doctor WhatsApp Number (editable)</Label>
-                <div className="relative">
-                  <Phone className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    type="tel"
-                    value={doctorWhatsApp}
-                    onChange={(e) => setDoctorWhatsApp(e.target.value)}
-                    placeholder="Enter WhatsApp number"
-                    className="pl-10"
-                    required
-                  />
-                </div>
-              </div>
-              <div>
-                <Label>Clinic Name</Label>
-                <Input value={selectedDoctor.clinic_name || "N/A"} readOnly />
-              </div>
-              <div>
-                <Label>Clinic Address</Label>
-                <Input
-                  value={selectedDoctor.clinic_address || "N/A"}
-                  readOnly
-                />
-              </div>
-              <div className="md:col-span-2">
-                <Label>City</Label>
-                <Input value={selectedDoctor.city || "N/A"} readOnly />
               </div>
             </div>
           )}
 
           {/* Camp Date */}
-          <div>
-            <Label htmlFor="camp-date">
-              Camp Date <span className="text-destructive">*</span>
+          <div className="space-y-2">
+            <Label htmlFor="camp-date" className="text-sm font-medium text-foreground">
+              Camp Date <span className="text-destructive font-bold">*</span>
             </Label>
             <Input
               id="camp-date"
@@ -525,46 +499,75 @@ Your Partner in Vitamin D Management
               onChange={(e) => setCampDate(e.target.value)}
               required
               min={today}
+              className="border-input bg-background text-foreground hover:bg-accent/50 focus:ring-2 focus:ring-primary transition-colors duration-150"
             />
+            <p className="text-xs text-muted-foreground">
+              Select a date for the camp
+            </p>
           </div>
 
-          {/* Consent Form */}
-          <div>
-            <Label htmlFor="consent-file">
+          {/* Consent Form Upload */}
+          <div className="space-y-2">
+            <Label htmlFor="consent-file" className="text-sm font-medium text-foreground">
               Upload Consent Form
-              <span className="text-destructive">*</span>
+              <span className="text-destructive font-bold">*</span>
             </Label>
-            <Input
-              id="consent-file"
-              type="file"
-              accept="image/*,.pdf"
-              onChange={handleFileChange}
-            />
+            <div className="relative">
+              <Input
+                id="consent-file"
+                type="file"
+                accept="image/jpeg,image/png,image/jpg,.pdf"
+                onChange={handleFileChange}
+                className="border-input bg-background text-foreground cursor-pointer file:mr-3 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-primary file:text-primary-foreground hover:file:bg-primary/90 transition-colors duration-150"
+              />
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Accepted formats: JPG, PNG, PDF (Max 5MB)
+            </p>
             {fileError && (
-              <p className="text-sm text-destructive mt-1">{fileError}</p>
+              <div className="mt-2 p-2 bg-destructive/10 border border-destructive/30 rounded-md">
+                <p className="text-sm text-destructive font-medium">
+                  ⚠️ {fileError}
+                </p>
+              </div>
             )}
             {consentFile && !fileError && (
-              <p className="text-sm text-muted-foreground mt-1">
-                Selected: {consentFile.name} (
-                {(consentFile.size / 1024).toFixed(1)} KB)
-              </p>
+              <div className="mt-2 p-3 bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-800 rounded-lg animate-in fade-in-50 duration-200">
+                <div className="flex items-center gap-2">
+                  <CheckCircle2 className="h-4 w-4 text-green-600 dark:text-green-400 flex-shrink-0" />
+                  <div>
+                    <p className="text-sm text-green-700 dark:text-green-300 font-medium">
+                      {consentFile.name}
+                    </p>
+                    <p className="text-xs text-green-600 dark:text-green-400">
+                      {(consentFile.size / 1024).toFixed(1)} KB
+                    </p>
+                  </div>
+                </div>
+              </div>
             )}
           </div>
 
-          {/* Submit */}
-          <div className="flex justify-end">
+          {/* Submit Button */}
+          <div className="flex justify-end pt-2 border-t border-border/40">
             <Button
               type="submit"
               disabled={
-                loading ||
-                !selectedDoctorId ||
-                !campDate ||
-                consentFile === null ||
-                !userTerritory
+                loading || !selectedDoctorId || !campDate || consentFile === null
               }
-              className="bg-gradient-to-r from-primary to-medical-teal hover:opacity-90"
+              className="bg-gradient-to-r from-primary to-medical-teal hover:opacity-90 text-primary-foreground font-semibold px-8 py-2.5 rounded-lg transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {loading ? "Creating..." : "Create Camp"}
+              {loading ? (
+                <>
+                  <span className="animate-spin mr-2">⏳</span>
+                  Creating Camp...
+                </>
+              ) : (
+                <>
+                  <Calendar className="h-4 w-4 mr-2" />
+                  Create Camp
+                </>
+              )}
             </Button>
           </div>
         </CardContent>
