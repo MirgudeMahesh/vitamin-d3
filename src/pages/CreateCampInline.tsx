@@ -1,5 +1,5 @@
 // ============================================================
-// CREATECAMPINLINE.TSX - Production Ready
+// CREATECAMPINLINE.TSX - Territory-Based Doctor Filtering
 // ============================================================
 import { useState, useEffect, useCallback, memo } from "react";
 import { Button } from "@/components/ui/button";
@@ -15,7 +15,7 @@ import {
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
-import { Calendar, Phone } from "lucide-react";
+import { Calendar, Phone, AlertCircle } from "lucide-react";
 
 interface Doctor {
   id: string;
@@ -24,12 +24,21 @@ interface Doctor {
   clinic_name: string | null;
   clinic_address: string | null;
   city: string | null;
+  territory: string | null;
   phone: string;
   whatsapp_number: string | null;
 }
 
 interface Props {
   onSuccess: (campId: string) => void;
+}
+
+interface User {
+  id: string;
+  email: string;
+  imacx_id: string;
+  loginTime: string;
+  territory?: string; // ✅ Added territory
 }
 
 const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
@@ -45,20 +54,89 @@ const CreateCampInline = memo(({ onSuccess }: Props) => {
   const [loading, setLoading] = useState(false);
   const [loadingDoctors, setLoadingDoctors] = useState(true);
   const [fileError, setFileError] = useState<string | null>(null);
+  const [userTerritory, setUserTerritory] = useState<string | null>(null);
+  const [territoryError, setTerritoryError] = useState<string | null>(null);
   const { toast } = useToast();
 
-  // Fetch pre-approved doctors
-  const fetchDoctors = useCallback(async () => {
+  // ✅ Get user from localStorage instead of Supabase Auth
+  const getCurrentUser = useCallback((): User | null => {
     try {
+      const storedUser = localStorage.getItem("vitaminDUser");
+      if (!storedUser) return null;
+      return JSON.parse(storedUser);
+    } catch (err) {
+      console.error("Error parsing user data:", err);
+      return null;
+    }
+  }, []);
+
+  // ✅ Fetch user's territory from database
+  const fetchUserTerritory = useCallback(async () => {
+    try {
+      const currentUser = getCurrentUser();
+      if (!currentUser) {
+        setTerritoryError("User not found. Please log in again.");
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from("users")
+        .select("territory")
+        .eq("id", currentUser.id)
+        .single();
+
+      if (error) throw error;
+
+      setUserTerritory(data?.territory || null);
+
+      if (!data?.territory) {
+        setTerritoryError(
+          "Your territory is not set. Please contact administrator."
+        );
+      }
+    } catch (err: any) {
+      console.error("Error fetching user territory:", err);
+      setTerritoryError(
+        err?.message || "Failed to fetch your territory information"
+      );
+      toast({
+        title: "Territory Error",
+        description:
+          err?.message || "Failed to fetch your territory information",
+        variant: "destructive",
+      });
+    }
+  }, [getCurrentUser, toast]);
+
+  // ✅ Fetch doctors filtered by user's territory
+  const fetchDoctors = useCallback(async () => {
+    if (!userTerritory) {
+      setLoadingDoctors(false);
+      return;
+    }
+// .eq("Territory", userTerritory) (removed)
+    try {
+      // 🔑 KEY CHANGE: Filter doctors by territory matching user's territory
       const { data, error } = await supabase
         .from("doctors")
         .select("*")
         .eq("is_selected_by_marketing", true)
+        // ✅ Filter by user's territory
         .order("name");
 
       if (error) throw error;
+
+      if (!data || data.length === 0) {
+        setTerritoryError(
+          `No doctors found in your territory (${userTerritory}).`
+        );
+      } else {
+        setTerritoryError(null);
+      }
+
       setDoctors(data || []);
     } catch (err: any) {
+      console.error("Error fetching doctors:", err);
       toast({
         title: "Error fetching doctors",
         description: err?.message || "Failed to load doctors",
@@ -67,23 +145,30 @@ const CreateCampInline = memo(({ onSuccess }: Props) => {
     } finally {
       setLoadingDoctors(false);
     }
-  }, [toast]);
+  }, [userTerritory, toast]);
 
+  // ✅ Fetch user territory on mount
   useEffect(() => {
-    fetchDoctors();
-  }, [fetchDoctors]);
+    fetchUserTerritory();
+  }, [fetchUserTerritory]);
+
+  // ✅ Fetch doctors when territory is loaded
+  useEffect(() => {
+    if (userTerritory) {
+      fetchDoctors();
+    }
+  }, [userTerritory, fetchDoctors]);
 
   // Handle doctor selection
   const handleDoctorSelect = useCallback(
-  (id: string) => {
-    setSelectedDoctorId(id);
-    const doc = doctors.find((d) => d.id === id) || null;
-    setSelectedDoctor(doc);
-    setDoctorWhatsApp(doc?.whatsapp_number || doc?.phone || ""); // auto-fill WhatsApp
-  },
-  [doctors]
-);
-
+    (id: string) => {
+      setSelectedDoctorId(id);
+      const doc = doctors.find((d) => d.id === id) || null;
+      setSelectedDoctor(doc);
+      setDoctorWhatsApp(doc?.whatsapp_number || doc?.phone || ""); // auto-fill WhatsApp
+    },
+    [doctors]
+  );
 
   // Validate file
   const validateFile = useCallback((file: File): boolean => {
@@ -117,32 +202,31 @@ const CreateCampInline = memo(({ onSuccess }: Props) => {
   );
 
   // Upload consent form - private & linked to camp_id
-const uploadConsentForm = useCallback(
-  async (file: File, campId: string): Promise<string> => {
-    try {
-      const fileExt = file.name.split(".").pop();
-      const fileName = `${campId}.${fileExt}`; // store with camp_id
-      const filePath = `consents/${fileName}`;
+  const uploadConsentForm = useCallback(
+    async (file: File, campId: string): Promise<string> => {
+      try {
+        const fileExt = file.name.split(".").pop();
+        const fileName = `${campId}.${fileExt}`; // store with camp_id
+        const filePath = `consents/${fileName}`;
 
-      const { error: uploadError } = await supabase.storage
-        .from("consent_forms")
-        .upload(filePath, file, {
-          cacheControl: "3600",
-          upsert: true, // overwrite if reuploaded
-        });
+        const { error: uploadError } = await supabase.storage
+          .from("consent_forms")
+          .upload(filePath, file, {
+            cacheControl: "3600",
+            upsert: true, // overwrite if reuploaded
+          });
 
-      if (uploadError) throw uploadError;
+        if (uploadError) throw uploadError;
 
-      // Save file path only (not URL)
-      return filePath;
-    } catch (err: any) {
-      console.error("File upload error:", err);
-      throw new Error(err?.message || "Failed to upload consent form");
-    }
-  },
-  []
-);
-
+        // Save file path only (not URL)
+        return filePath;
+      } catch (err: any) {
+        console.error("File upload error:", err);
+        throw new Error(err?.message || "Failed to upload consent form");
+      }
+    },
+    []
+  );
 
   // Determine camp status
   const determineCampStatus = useCallback((campDate: string): string => {
@@ -164,18 +248,17 @@ const uploadConsentForm = useCallback(
 Dear Dr. ${doctor?.name || ""},
 
 Thank you for your consent to conduct Vitamin D Risk Assessment Camp at your clinic on ${new Date(
-  campDate
-).toLocaleDateString()}.
+        campDate
+      ).toLocaleDateString()}.
 
 We will initiate screening patients for their risk of Vitamin D deficiency shortly.
-Once the camp concludes, we’ll share a brief summary report highlighting the number of patients screened and key findings.
+Once the camp concludes, we'll share a brief summary report highlighting the number of patients screened and key findings.
 
 Thank you for partnering with Pulse Pharmaceuticals in this mission to make India Vitamin D deficiency-free.
 
 Team Pulse Pharmaceuticals
 Your Partner in Vitamin D Management
 `.trim();
-
 
       window.open(
         `https://wa.me/${formattedPhone}?text=${encodeURIComponent(message)}`,
@@ -186,111 +269,122 @@ Your Partner in Vitamin D Management
   );
 
   // Create camp
-const handleCreateCamp = useCallback(
-  async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleCreateCamp = useCallback(
+    async (e: React.FormEvent) => {
+      e.preventDefault();
 
-    if (!selectedDoctorId || !campDate) {
-      toast({
-        title: "Missing information",
-        description: "Please select a doctor and camp date.",
-        variant: "destructive",
-      });
-      return;
-    }
+      if (!selectedDoctorId || !campDate) {
+        toast({
+          title: "Missing information",
+          description: "Please select a doctor and camp date.",
+          variant: "destructive",
+        });
+        return;
+      }
 
-    setLoading(true);
+      setLoading(true);
 
-    try {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user) throw new Error("User not authenticated");
-
-      // ✅ Update doctor's WhatsApp number before creating camp
-      if (doctorWhatsApp) {
-        const { error: updateError } = await supabase
-          .from("doctors")
-          .update({ whatsapp_number: doctorWhatsApp })
-          .eq("id", selectedDoctorId);
-
-        if (updateError) {
-          console.warn("Failed to update doctor's WhatsApp number:", updateError.message);
+      try {
+        // ✅ Get current user from localStorage
+        const currentUser = getCurrentUser();
+        if (!currentUser) {
+          toast({
+            title: "Authentication Error",
+            description: "Please log in again.",
+            variant: "destructive",
+          });
+          return;
         }
-      }
 
-      // ✅ Step 1: Determine initial camp status
-      const initialStatus = determineCampStatus(campDate);
+        // ✅ Update doctor's WhatsApp number before creating camp
+        if (doctorWhatsApp) {
+          const { error: updateError } = await supabase
+            .from("doctors")
+            .update({ whatsapp_number: doctorWhatsApp })
+            .eq("id", selectedDoctorId);
 
-      // ✅ Step 2: Create camp first (without consent)
-      const { data: camp, error: campError } = await supabase
-        .from("camps")
-        .insert({
-          user_id: user.id,
-          doctor_id: selectedDoctorId,
-          camp_date: campDate,
-          status: initialStatus,
-          total_patients: 0,
-        })
-        .select()
-        .single();
+          if (updateError) {
+            console.warn(
+              "Failed to update doctor's WhatsApp number:",
+              updateError.message
+            );
+          }
+        }
 
-      if (campError) throw campError;
+        // ✅ Step 1: Determine initial camp status
+        const initialStatus = determineCampStatus(campDate);
 
-      // ✅ Step 3: If consent file exists, upload it with camp_id
-      if (consentFile) {
-        const filePath = await uploadConsentForm(consentFile, camp.id);
-
-        const { error: updateError } = await supabase
+        // ✅ Step 2: Create camp first (without consent)
+        const { data: camp, error: campError } = await supabase
           .from("camps")
-          .update({ consent_form_url: filePath })
-          .eq("id", camp.id);
+          .insert({
+            user_id: currentUser.id, // ✅ Using user ID from localStorage
+            doctor_id: selectedDoctorId,
+            camp_date: campDate,
+            status: initialStatus,
+            total_patients: 0,
+          })
+          .select()
+          .single();
 
-        if (updateError) throw updateError;
+        if (campError) throw campError;
+
+        // ✅ Step 3: If consent file exists, upload it with camp_id
+        if (consentFile) {
+          const filePath = await uploadConsentForm(consentFile, camp.id);
+
+          const { error: updateError } = await supabase
+            .from("camps")
+            .update({ consent_form_url: filePath })
+            .eq("id", camp.id);
+
+          if (updateError) throw updateError;
+        }
+
+        // ✅ Step 4: Send WhatsApp message
+        if (selectedDoctor) {
+          const updatedDoctor = {
+            ...selectedDoctor,
+            whatsapp_number: doctorWhatsApp,
+          };
+          sendWhatsAppMessage(updatedDoctor, campDate);
+        }
+
+        // ✅ Step 5: Notify user
+        toast({
+          title: "Camp created successfully!",
+          description:
+            initialStatus === "scheduled"
+              ? "Camp scheduled successfully."
+              : "Camp created and active! Redirecting to patient registration...",
+        });
+
+        onSuccess(camp.id);
+      } catch (err: any) {
+        console.error("Camp creation error:", err);
+        toast({
+          title: "Error creating camp",
+          description: err?.message || "Failed to create camp",
+          variant: "destructive",
+        });
+      } finally {
+        setLoading(false);
       }
-
-      // ✅ Step 4: Send WhatsApp message
-      if (selectedDoctor) {
-        const updatedDoctor = { ...selectedDoctor, whatsapp_number: doctorWhatsApp };
-        sendWhatsAppMessage(updatedDoctor, campDate);
-      }
-
-      // ✅ Step 5: Notify user
-      toast({
-        title: "Camp created successfully!",
-        description:
-          initialStatus === "scheduled"
-            ? "Camp scheduled successfully."
-            : "Camp created and active! Redirecting to patient registration...",
-      });
-
-      onSuccess(camp.id);
-    } catch (err: any) {
-      console.error("Camp creation error:", err);
-      toast({
-        title: "Error creating camp",
-        description: err?.message || "Failed to create camp",
-        variant: "destructive",
-      });
-    } finally {
-      setLoading(false);
-    }
-  },
-  [
-    selectedDoctorId,
-    campDate,
-    consentFile,
-    selectedDoctor,
-    doctorWhatsApp,
-    determineCampStatus,
-    uploadConsentForm,
-    sendWhatsAppMessage,
-    onSuccess,
-    toast,
-  ]
-);
-
-
+    },
+    [
+      selectedDoctorId,
+      campDate,
+      consentFile,
+      selectedDoctor,
+      doctorWhatsApp,
+      determineCampStatus,
+      uploadConsentForm,
+      sendWhatsAppMessage,
+      getCurrentUser,
+      onSuccess,
+      toast,
+    ]
+  );
 
   const today = new Date().toISOString().split("T")[0];
 
@@ -303,6 +397,32 @@ const handleCreateCamp = useCallback(
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
+          {/* ✅ Territory Display */}
+          {/* <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
+            <div className="flex items-start gap-2">
+              <AlertCircle className="h-5 w-5 text-blue-600 mt-0.5 flex-shrink-0" />
+              <div>
+                <p className="text-sm font-medium text-blue-900">
+                  Your Territory:{" "}
+                  <span className="font-bold">
+                    {userTerritory || "Loading..."}
+                  </span>
+                </p>
+                <p className="text-xs text-blue-700 mt-1">
+                  You can only create camps with doctors assigned to your territory.
+                </p>
+              </div>
+            </div>
+          </div> removed*/}
+
+
+          {/* ✅ Territory Error Display */}
+          {territoryError && (
+            <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
+              <p className="text-sm text-red-700">{territoryError}</p>
+            </div>
+          )}
+
           {/* Doctor Selection */}
           <div>
             <Label htmlFor="doctor-select">
@@ -311,23 +431,32 @@ const handleCreateCamp = useCallback(
             <Select
               value={selectedDoctorId}
               onValueChange={handleDoctorSelect}
-              disabled={loadingDoctors}
+              disabled={loadingDoctors || !userTerritory || doctors.length === 0}
             >
               <SelectTrigger id="doctor-select">
                 <SelectValue
                   placeholder={
-                    loadingDoctors ? "Loading doctors..." : "Choose a doctor"
+                    loadingDoctors
+                      ? "Loading doctors..."
+                      : doctors.length === 0
+                        ? "No doctors in your territory"
+                        : "Choose a doctor"
                   }
                 />
               </SelectTrigger>
               <SelectContent>
                 {doctors.map((doctor) => (
                   <SelectItem key={doctor.id} value={doctor.id}>
-                    {doctor.name} • {doctor.clinic_name}, {doctor.city}
+                    {doctor.name} • {doctor.clinic_name}, {doctor.city} •{" "}
+                    {doctor.territory}
                   </SelectItem>
                 ))}
               </SelectContent>
             </Select>
+            <p className="text-xs text-muted-foreground mt-1">
+              {doctors.length} doctor{doctors.length !== 1 ? "s" : ""} available
+              in your territory
+            </p>
           </div>
 
           {/* Auto-filled fields */}
@@ -336,6 +465,10 @@ const handleCreateCamp = useCallback(
               <div>
                 <Label>Specialty</Label>
                 <Input value={selectedDoctor.specialty || "N/A"} readOnly />
+              </div>
+              <div>
+                <Label>Territory</Label>
+                <Input value={selectedDoctor.territory || "N/A"} readOnly />
               </div>
               <div>
                 <Label>Doctor Mobile</Label>
@@ -353,13 +486,13 @@ const handleCreateCamp = useCallback(
                 <div className="relative">
                   <Phone className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
                   <Input
-                  type="tel"
-                  value={doctorWhatsApp}
-                  onChange={(e) => setDoctorWhatsApp(e.target.value)}
-                  placeholder="Enter WhatsApp number"
-                  className="pl-10"
-                  required
-                />
+                    type="tel"
+                    value={doctorWhatsApp}
+                    onChange={(e) => setDoctorWhatsApp(e.target.value)}
+                    placeholder="Enter WhatsApp number"
+                    className="pl-10"
+                    required
+                  />
                 </div>
               </div>
               <div>
@@ -368,7 +501,10 @@ const handleCreateCamp = useCallback(
               </div>
               <div>
                 <Label>Clinic Address</Label>
-                <Input value={selectedDoctor.clinic_address || "N/A"} readOnly />
+                <Input
+                  value={selectedDoctor.clinic_address || "N/A"}
+                  readOnly
+                />
               </div>
               <div className="md:col-span-2">
                 <Label>City</Label>
@@ -394,7 +530,9 @@ const handleCreateCamp = useCallback(
 
           {/* Consent Form */}
           <div>
-            <Label htmlFor="consent-file">Upload Consent Form<span className="text-destructive">*</span>
+            <Label htmlFor="consent-file">
+              Upload Consent Form
+              <span className="text-destructive">*</span>
             </Label>
             <Input
               id="consent-file"
@@ -407,7 +545,8 @@ const handleCreateCamp = useCallback(
             )}
             {consentFile && !fileError && (
               <p className="text-sm text-muted-foreground mt-1">
-                Selected: {consentFile.name} ({(consentFile.size / 1024).toFixed(1)} KB)
+                Selected: {consentFile.name} (
+                {(consentFile.size / 1024).toFixed(1)} KB)
               </p>
             )}
           </div>
@@ -416,7 +555,13 @@ const handleCreateCamp = useCallback(
           <div className="flex justify-end">
             <Button
               type="submit"
-              disabled={loading || !selectedDoctorId || !campDate || consentFile === null }
+              disabled={
+                loading ||
+                !selectedDoctorId ||
+                !campDate ||
+                consentFile === null ||
+                !userTerritory
+              }
               className="bg-gradient-to-r from-primary to-medical-teal hover:opacity-90"
             >
               {loading ? "Creating..." : "Create Camp"}

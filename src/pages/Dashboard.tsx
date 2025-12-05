@@ -1,5 +1,5 @@
 // ============================================================
-// DASHBOARD.TSX - Production Ready
+// DASHBOARD.TSX - Production Ready (User-Specific Camps Only)
 // ============================================================
 import { useState, useEffect, useCallback, memo } from "react";
 import { useNavigate } from "react-router-dom";
@@ -33,6 +33,13 @@ import {
 } from "lucide-react";
 
 // Types
+interface User {
+  id: string;
+  email: string;
+  imacx_id: string;
+  loginTime: string;
+}
+
 interface Camp {
   id: string;
   camp_date: string;
@@ -147,7 +154,19 @@ const EmptyState = memo(({ onCreate }: { onCreate: () => void }) => (
 ));
 EmptyState.displayName = "EmptyState";
 
+// ✅ Helper function to get current user from localStorage
+const getCurrentUser = (): User | null => {
+  try {
+    const storedUser = localStorage.getItem("vitaminDUser");
+    return storedUser ? JSON.parse(storedUser) : null;
+  } catch (err) {
+    console.error("Error parsing user from localStorage:", err);
+    return null;
+  }
+};
+
 const Dashboard = () => {
+  const [user, setUser] = useState<User | null>(null);
   const [camps, setCamps] = useState<Camp[]>([]);
   const [stats, setStats] = useState<DashboardStats>({
     totalCamps: 0,
@@ -161,90 +180,111 @@ const Dashboard = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
 
+  // ✅ Initialize user from localStorage on mount
+  useEffect(() => {
+    const currentUser = getCurrentUser();
+    if (!currentUser) {
+      toast({
+        title: "Session Expired",
+        description: "Please log in again.",
+        variant: "destructive",
+      });
+      navigate("/auth", { replace: true });
+      return;
+    }
+    setUser(currentUser);
+  }, [navigate, toast]);
+
+  // ✅ Fetch ONLY camps created by the current user
   const fetchDashboardData = useCallback(async () => {
-  try {
-    setError(null);
-    const { data, error: fetchError } = await supabase
-      .from("camps")
-      .select(
-        `
-        id,
-        camp_date,
-        status,
-        total_patients,
-        adequate_patients,
-        inadequate_patients,
-        doctors!inner(name, clinic_name, city)
-      `
-      )
-      .order("camp_date", { ascending: false });
-
-    if (fetchError) throw fetchError;
-
-    const formattedCamps: Camp[] =
-      data?.map((camp: any) => ({
-        id: camp.id,
-        camp_date: camp.camp_date,
-        status: camp.status,
-        total_patients: camp.total_patients || 0,
-        adequate_patients: camp.adequate_patients || 0,
-        inadequate_patients: camp.inadequate_patients || 0,
-        doctor: camp.doctors,
-      })) || [];
-
-    // ✅ Auto-activate camps scheduled for today
-    const today = new Date().setHours(0, 0, 0, 0);
-    for (const camp of formattedCamps) {
-      const campDate = new Date(camp.camp_date).setHours(0, 0, 0, 0);
-      if (camp.status === "scheduled" && campDate <= today) {
-        await supabase
-          .from("camps")
-          .update({ status: "active" })
-          .eq("id", camp.id);
-
-        camp.status = "active";
-      }
+    if (!user) {
+      setLoading(false);
+      return;
     }
 
-    setCamps(formattedCamps);
-
-    setStats({
-      totalCamps: formattedCamps.length,
-      activeCamps: formattedCamps.filter((c) => c.status === "active").length,
-      completedCamps: formattedCamps.filter((c) => c.status === "completed").length,
-      upcomingCamps: formattedCamps.filter((c) => c.status === "scheduled").length,
-    });
-  } catch (err: any) {
-    const errorMessage = err?.message || "Failed to fetch dashboard data";
-    setError(errorMessage);
-    toast({
-      title: "Error fetching dashboard data",
-      description: errorMessage,
-      variant: "destructive",
-    });
-  } finally {
-    setLoading(false);
-  }
-}, [toast]);
-
-
-  useEffect(() => {
-    fetchDashboardData();
-  }, [fetchDashboardData]);
-
-  const handleSignOut = useCallback(async () => {
     try {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
+      setError(null);
 
-      if (session) {
-        const { error } = await supabase.auth.signOut();
-        if (error) throw error;
+      // 🔑 KEY CHANGE: Filter by user_id
+      const { data, error: fetchError } = await supabase
+        .from("camps")
+        .select(
+          `
+          id,
+          camp_date,
+          status,
+          total_patients,
+          adequate_patients,
+          inadequate_patients,
+          doctors!inner(name, clinic_name, city)
+        `
+        )
+        .eq("user_id", user.id) // ✅ Filter by logged-in user's ID
+        .order("camp_date", { ascending: false });
+
+      if (fetchError) throw fetchError;
+
+      const formattedCamps: Camp[] =
+        data?.map((camp: any) => ({
+          id: camp.id,
+          camp_date: camp.camp_date,
+          status: camp.status,
+          total_patients: camp.total_patients || 0,
+          adequate_patients: camp.adequate_patients || 0,
+          inadequate_patients: camp.inadequate_patients || 0,
+          doctor: camp.doctors,
+        })) || [];
+
+      // ✅ Auto-activate camps scheduled for today
+      const today = new Date().setHours(0, 0, 0, 0);
+      for (const camp of formattedCamps) {
+        const campDate = new Date(camp.camp_date).setHours(0, 0, 0, 0);
+        if (camp.status === "scheduled" && campDate <= today) {
+          await supabase
+            .from("camps")
+            .update({ status: "active" })
+            .eq("id", camp.id);
+
+          camp.status = "active";
+        }
       }
 
-      // Clear storage
-      localStorage.removeItem("supabase.auth.token");
+      setCamps(formattedCamps);
+
+      setStats({
+        totalCamps: formattedCamps.length,
+        activeCamps: formattedCamps.filter((c) => c.status === "active")
+          .length,
+        completedCamps: formattedCamps.filter((c) => c.status === "completed")
+          .length,
+        upcomingCamps: formattedCamps.filter((c) => c.status === "scheduled")
+          .length,
+      });
+    } catch (err: any) {
+      const errorMessage = err?.message || "Failed to fetch dashboard data";
+      setError(errorMessage);
+      toast({
+        title: "Error fetching dashboard data",
+        description: errorMessage,
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
+  }, [user, toast]);
+
+  // ✅ Call fetchDashboardData when user is set
+  useEffect(() => {
+    if (user) {
+      fetchDashboardData();
+    }
+  }, [user, fetchDashboardData]);
+
+  // ✅ Updated handleSignOut - No Supabase Auth
+  const handleSignOut = useCallback(() => {
+    try {
+      // Clear user session from localStorage
+      localStorage.removeItem("vitaminDUser");
       sessionStorage.clear();
 
       toast({
@@ -252,16 +292,16 @@ const Dashboard = () => {
         description: "You have been logged out successfully.",
       });
 
-      // Redirect to external site
-      window.location.href = "https://google.com";
+      // Redirect to login page
+      navigate("/auth", { replace: true });
     } catch (err: any) {
       console.error("Logout error:", err);
       // Force logout anyway
-      localStorage.removeItem("supabase.auth.token");
+      localStorage.removeItem("vitaminDUser");
       sessionStorage.clear();
-      window.location.href = "https://google.com";
+      navigate("/auth", { replace: true });
     }
-  }, [toast]);
+  }, [toast, navigate]);
 
   const getStatusBadgeVariant = useCallback(
     (status: string): "default" | "destructive" | "secondary" | "outline" => {
@@ -287,6 +327,17 @@ const Dashboard = () => {
     },
     [navigate, fetchDashboardData]
   );
+
+  if (!user) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-center space-y-4">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto"></div>
+          <p className="text-muted-foreground">Loading profile...</p>
+        </div>
+      </div>
+    );
+  }
 
   if (loading) {
     return (
@@ -327,9 +378,14 @@ const Dashboard = () => {
               <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary">
                 <Stethoscope className="h-4 w-4 text-primary-foreground" />
               </div>
-              <h1 className="text-xl font-bold text-foreground">
-                Vitamin D Camp Dashboard
-              </h1>
+              <div>
+                <h1 className="text-xl font-bold text-foreground">
+                  Vitamin D Camp Dashboard
+                </h1>
+                <p className="text-xs text-muted-foreground">
+                  {user.email}
+                </p>
+              </div>
             </div>
             <Button variant="ghost" onClick={handleSignOut}>
               <LogOut className="h-4 w-4 mr-2" />
@@ -366,7 +422,7 @@ const Dashboard = () => {
 
         {/* Actions */}
         <div className="flex justify-between items-center mb-6">
-          <h2 className="text-2xl font-bold text-foreground">Recent Camps</h2>
+          <h2 className="text-2xl font-bold text-foreground">My Camps</h2>
           <Button
             onClick={() => setShowCreateCampModal(true)}
             className="bg-gradient-to-r from-primary to-medical-teal hover:opacity-90"
@@ -376,9 +432,11 @@ const Dashboard = () => {
         </div>
 
         {/* Create Camp Modal */}
-        <Dialog open={showCreateCampModal} onOpenChange={setShowCreateCampModal}>
+        <Dialog
+          open={showCreateCampModal}
+          onOpenChange={setShowCreateCampModal}
+        >
           <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto scrollbar-thin scrollbar-thumb-muted-foreground/40">
-
             <DialogHeader>
               <DialogTitle>Create New Camp</DialogTitle>
             </DialogHeader>

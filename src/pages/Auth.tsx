@@ -1,7 +1,6 @@
 import { useEffect, useState, useCallback } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast";
-import { supabase } from "@/integrations/supabase/client";
 import { Activity, LogIn } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -18,15 +17,12 @@ const Auth = () => {
   const [error, setError] = useState<string | null>(null);
   const [imacxId, setImacxId] = useState("");
 
-  // ✅ Monitor session state
+  // ✅ Check if user is already logged in
   useEffect(() => {
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (session) navigate("/", { replace: true });
-    });
-
-    return () => subscription.unsubscribe();
+    const user = localStorage.getItem("vitaminDUser");
+    if (user) {
+      navigate("/", { replace: true });
+    }
   }, [navigate]);
 
   // ✅ Authentication handler
@@ -55,17 +51,19 @@ const Auth = () => {
 
         const result = await response.json();
 
-        if (!result.session?.access_token) {
+        if (!result.session?.user) {
           throw new Error("Invalid session response");
         }
 
-        const { error: sessionError } = await supabase.auth.setSession({
-          access_token: result.session.access_token,
-          refresh_token:
-            result.session.refresh_token || result.session.access_token,
-        });
+        // ✅ Store user data in localStorage (no Supabase Auth)
+        const userData = {
+          id: result.session.user.id,
+          email: result.session.user.email,
+          imacx_id: id,
+          loginTime: new Date().toISOString(),
+        };
 
-        if (sessionError) throw sessionError;
+        localStorage.setItem("vitaminDUser", JSON.stringify(userData));
 
         toast({
           title: "Authentication successful",
@@ -110,9 +108,6 @@ const Auth = () => {
       });
       return;
     }
-
-    // Clean up URL
-    // window.history.replaceState({}, document.title, window.location.pathname);
 
     handleIMACXLogin(decodedId);
   }, [searchParams, handleIMACXLogin, toast]);

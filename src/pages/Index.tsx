@@ -1,39 +1,33 @@
-import { useState, useEffect, useCallback } from "react";
-import { Session } from "@supabase/supabase-js";
-import { supabase } from "@/integrations/supabase/client";
+import { useState, useEffect } from "react";
 import Dashboard from "./Dashboard";
 import Auth from "./Auth";
 
+interface User {
+  id: string;
+  email: string;
+  imacx_id: string;
+  loginTime: string;
+}
+
 const Index = () => {
-  const [session, setSession] = useState<Session | null>(null);
+  const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const initAuth = useCallback(async () => {
+  useEffect(() => {
+    // ✅ Check localStorage for existing user session
     try {
-      const { data, error } = await supabase.auth.getSession();
-      if (error) throw error;
-      setSession(data.session);
+      const storedUser = localStorage.getItem("vitaminDUser");
+      if (storedUser) {
+        const userData = JSON.parse(storedUser);
+        setUser(userData);
+      }
     } catch (err) {
-      console.error("Error fetching session:", err);
-      setSession(null);
+      console.error("Error parsing user data:", err);
+      localStorage.removeItem("vitaminDUser");
     } finally {
       setLoading(false);
     }
   }, []);
-
-  useEffect(() => {
-    initAuth();
-
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session);
-    });
-
-    return () => {
-      subscription.unsubscribe();
-    };
-  }, [initAuth]);
 
   if (loading) {
     return (
@@ -46,7 +40,7 @@ const Index = () => {
     );
   }
 
-  return session ? <Dashboard /> : <Auth />;
+  return user ? <Dashboard /> : <Auth />;
 };
 
 export default Index;
