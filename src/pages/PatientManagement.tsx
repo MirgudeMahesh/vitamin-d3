@@ -546,6 +546,7 @@ Your Partner in managing Vitamin D Deficiency
   );
 
   const printWithRawBT = useCallback((patient: Patient) => {
+    console.log("Printing patient:", patient);
     const comorbidities: string[] = [];
 
     if (patient.diabetes) comorbidities.push("• Diabetes");
