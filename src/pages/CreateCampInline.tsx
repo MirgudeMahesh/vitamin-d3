@@ -559,7 +559,7 @@ Your Partner in Vitamin D Management
                 !selectedDoctorId ||
                 !campDate ||
                 consentFile === null ||
-                !userTerritory
+                !userTerritory || !doctorWhatsApp
               }
               className="bg-gradient-to-r from-primary to-medical-teal hover:opacity-90"
             >
