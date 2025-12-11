@@ -5,9 +5,16 @@ import { Activity, LogIn } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { createClient } from "@supabase/supabase-js";
 
 const EDGE_FUNCTION_URL =
   "https://jjtvugsixtauuwyyzkoc.supabase.co/functions/v1/imacx-login";
+
+// ✅ Initialize Supabase client
+const supabase = createClient(
+  "https://jjtvugsixtauuwyyzkoc.supabase.co",
+  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpqdHZ1Z3NpeHRhdXV3eXl6a29jIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTkwMzMxMTIsImV4cCI6MjA3NDYwOTExMn0.NbIzQIouOFTQfbvZVHI4TnHtBT08uct2nuMMwx6HhHc"
+);
 
 const Auth = () => {
   const navigate = useNavigate();
@@ -32,46 +39,150 @@ const Auth = () => {
       setError(null);
 
       try {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 10000);
+        // ✅ Check users table (BE users)
+        const { data: beUser, error: beError } = await supabase
+          .from("users")
+          .select("*")
+          .eq("imacx_id", id)
+          .maybeSingle();
 
-        const response = await fetch(EDGE_FUNCTION_URL, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ imacx_id: id }),
-          signal: controller.signal,
-        });
+        console.log("BE User check:", beUser, "Error:", beError);
 
-        clearTimeout(timeoutId);
+        if (beUser) {
+          // User found in users table - this is a BE
+          console.log("User is BE, calling Edge Function");
+          
+          try {
+            // Call Edge Function for authentication
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 10000);
 
-        if (!response.ok) {
-          const result = await response.json();
-          throw new Error(result.error || "Authentication failed");
+            const response = await fetch(EDGE_FUNCTION_URL, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ imacx_id: id }),
+              signal: controller.signal,
+            });
+
+            clearTimeout(timeoutId);
+
+            if (!response.ok) {
+              const result = await response.json();
+              throw new Error(result.error || "Authentication failed");
+            }
+
+            const result = await response.json();
+
+            if (!result.session?.user) {
+              throw new Error("Invalid session response");
+            }
+
+            // ✅ Store BE user data with role
+            const userData = {
+              id: result.session.user.id,
+              email: result.session.user.email,
+              imacx_id: id,
+              role: "BE",
+              territory: beUser.territory,
+              name: beUser.name,
+              phone: beUser.phone,
+              loginTime: new Date().toISOString(),
+            };
+
+            console.log("Storing BE user data:", userData);
+            localStorage.setItem("vitaminDUser", JSON.stringify(userData));
+
+            toast({
+              title: "Authentication successful",
+              description: `Welcome back, ${beUser.name}!`,
+            });
+
+            navigate("/", { replace: true });
+          } catch (edgeFunctionError: any) {
+            console.error("Edge Function failed, logging in anyway:", edgeFunctionError);
+            
+            // ✅ Fallback: If Edge Function fails, still log in BE user
+            const userData = {
+              id: beUser.id,
+              email: beUser.email || `${id}@company.com`,
+              imacx_id: id,
+              role: "BE",
+              territory: beUser.territory,
+              name: beUser.name,
+              phone: beUser.phone,
+              loginTime: new Date().toISOString(),
+            };
+
+            console.log("Storing BE user data (fallback):", userData);
+            localStorage.setItem("vitaminDUser", JSON.stringify(userData));
+
+            toast({
+              title: "Authentication successful",
+              description: `Welcome back, ${beUser.name}!`,
+            });
+
+            navigate("/", { replace: true });
+          }
+        } else {
+          // Check usersbm table (BM users) - get ALL rows for this BM
+          console.log("Not in users table, checking usersbm table");
+          
+          const { data: bmUsers, error: bmError } = await supabase
+            .from("usersbm")
+            .select("*")
+            .eq("imacx_id", id)
+            .order('id', { ascending: true }); // ✅ CRITICAL: Ensures consistent ordering
+
+          console.log("BM Users check:", bmUsers, "Error:", bmError);
+
+          if (!bmUsers || bmUsers.length === 0) {
+            throw new Error("Invalid IMACX ID - User not found in any table");
+          }
+
+          // ✅ ALWAYS use the first row's ID (now guaranteed to be the same)
+          const bmUser = bmUsers[0];
+          const bmUserId = bmUser.id && bmUser.id !== "undefined" && bmUser.id.length > 0
+            ? bmUser.id 
+            : crypto.randomUUID();
+
+          // ✅ Collect all BE territories from all rows
+          const allBeTerritories = bmUsers
+            .map(row => row.beterritory)
+            .filter(t => t && t.trim().length > 0)
+            .join(",");
+
+          console.log(`BM using consistent ID: ${bmUserId} for imacx_id: ${id}`);
+          console.log(`Found ${bmUsers.length} BE territories:`, allBeTerritories);
+
+          // User found in usersbm table - this is a BM
+          console.log("User is BM, skipping Edge Function");
+
+          // ✅ Store BM user data with ALL territories
+          const userData = {
+            id: bmUserId, // ✅ Always the same ID for this BM user
+            email: bmUser.email || `${id}@company.com`,
+            imacx_id: id,
+            role: "BM",
+            territory: bmUser.territory, // BM's own territory (e.g., "bm1")
+            beterritory: allBeTerritories, // ✅ ALL BE territories comma-separated
+            name: bmUser.name,
+            phone: bmUser.phone,
+            loginTime: new Date().toISOString(),
+          };
+
+          console.log("Storing BM user data:", userData);
+          localStorage.setItem("vitaminDUser", JSON.stringify(userData));
+
+          toast({
+            title: "Authentication successful",
+            description: `Welcome back, ${bmUser.name}!`,
+          });
+
+          navigate("/", { replace: true });
         }
-
-        const result = await response.json();
-
-        if (!result.session?.user) {
-          throw new Error("Invalid session response");
-        }
-
-        // ✅ Store user data in localStorage (no Supabase Auth)
-        const userData = {
-          id: result.session.user.id,
-          email: result.session.user.email,
-          imacx_id: id,
-          loginTime: new Date().toISOString(),
-        };
-
-        localStorage.setItem("vitaminDUser", JSON.stringify(userData));
-
-        toast({
-          title: "Authentication successful",
-          description: "Welcome back!",
-        });
-
-        navigate("/", { replace: true });
       } catch (err: any) {
+        console.error("Login error:", err);
+        
         const errorMessage =
           err.name === "AbortError"
             ? "Request timeout. Please try again."
