@@ -281,27 +281,7 @@ const Dashboard = () => {
   }, [user, fetchDashboardData]);
 
   // ✅ Updated handleSignOut - No Supabase Auth
-  const handleSignOut = useCallback(() => {
-    try {
-      // Clear user session from localStorage
-      localStorage.removeItem("vitaminDUser");
-      sessionStorage.clear();
 
-      toast({
-        title: "Signed Out",
-        description: "You have been logged out successfully.",
-      });
-
-      // Redirect to login page
-      navigate("/auth", { replace: true });
-    } catch (err: any) {
-      console.error("Logout error:", err);
-      // Force logout anyway
-      localStorage.removeItem("vitaminDUser");
-      sessionStorage.clear();
-      navigate("/auth", { replace: true });
-    }
-  }, [toast, navigate]);
 
   const getStatusBadgeVariant = useCallback(
     (status: string): "default" | "destructive" | "secondary" | "outline" => {
@@ -387,10 +367,8 @@ const Dashboard = () => {
                 </p>
               </div>
             </div>
-            <Button variant="ghost" onClick={handleSignOut}>
-              <LogOut className="h-4 w-4 mr-2" />
-              Sign Out
-            </Button>
+         
+
           </div>
         </div>
       </header>
