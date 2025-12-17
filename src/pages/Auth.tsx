@@ -269,14 +269,14 @@ const Auth = () => {
                 />
               </div>
 
-              <Button
+              {/* <Button
                 type="submit"
                 className="w-full bg-primary hover:bg-primary/90"
                 disabled={isLoading}
               >
                 <LogIn className="mr-2 h-4 w-4" />
                 Login
-              </Button>
+              </Button> */}
             </form>
 
             {error && (
