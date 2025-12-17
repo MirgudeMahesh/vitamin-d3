@@ -209,10 +209,10 @@ const PatientManagement = () => {
         const heightFeet = Number(formData.height_feet) || 0;
         const heightInches = Number(formData.height_inches) || 0;
 
-        if (heightFeet > 6 || (heightFeet === 6 && heightInches > 0)) {
+        if (heightFeet > 7 || (heightFeet === 7 && heightInches > 0)) {
           toast({
             title: "Invalid height",
-            description: "Height cannot exceed 6 feet.",
+            description: "Height cannot exceed 7 feet.",
             variant: "destructive",
           });
           setLoading(false);
