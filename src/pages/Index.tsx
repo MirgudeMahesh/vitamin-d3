@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import Dashboard from "./Dashboard";
-import NotFound from "./NotFound";
+import Auth from "./Auth";
 
 interface User {
   id: string;
@@ -14,6 +14,7 @@ const Index = () => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    // ✅ Check localStorage for existing user session
     try {
       const storedUser = localStorage.getItem("vitaminDUser");
       if (storedUser) {
@@ -39,12 +40,7 @@ const Index = () => {
     );
   }
 
-  if (!user) {
-    // Unauthenticated users see NotFound on "/"
-    return <NotFound />;
-  }
-
-  return <Dashboard />;
+  return user ? <Dashboard /> : <Auth />;
 };
 
 export default Index;
