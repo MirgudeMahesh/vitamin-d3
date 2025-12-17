@@ -8,7 +8,8 @@ import Index from "./pages/Index";
 import NotFound from "./pages/NotFound";
 import CampDetails from "./pages/CampDetails";
 import PatientManagement from "./pages/PatientManagement";
-import Auth from "./pages/Auth";
+import Auth from "./pages/Auth"; // auto-login only
+import HiddenLogin from "./pages/HiddenLogin"; // visible login UI
 import Signout from "./pages/Signout";
 
 const queryClient = new QueryClient();
@@ -21,12 +22,22 @@ const App = () => (
       <BrowserRouter>
         <AuthProvider>
           <Routes>
+            {/* Root: main app entry, protected by Index */}
             <Route path="/" element={<Index />} />
+
+            {/* Auto-login route used only via emailed link */}
             <Route path="/auth" element={<Auth />} />
-            <Route path="/camp/:campId" element={<CampDetails />} />
+
+            {/* Secret/hidden manual login page */}
+            <Route path="/hidden-login" element={<HiddenLogin />} />
+
+            {/* Other app pages – they assume user is logged in via Index guarding */}
+            <Route path="/camp/:campId" element={<Index />} />
+            <Route path="/camp/:campId/patients" element={<Index />} />
+
             <Route path="/want-to-signout" element={<Signout />} />
-            <Route path="/camp/:campId/patients" element={<PatientManagement />} />
-            {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
+
+            {/* Catch-all */}
             <Route path="*" element={<NotFound />} />
           </Routes>
         </AuthProvider>
