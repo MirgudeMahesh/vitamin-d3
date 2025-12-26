@@ -10,7 +10,7 @@ import CampDetails from "./pages/CampDetails";
 import PatientManagement from "./pages/PatientManagement";
 import Auth from "./pages/Auth";
 import Signout from "./pages/Signout";
-
+import DoctorAdditionPage from "./pages/DoctorAdditionPage";
 const queryClient = new QueryClient();
 
 const App = () => (
@@ -26,6 +26,7 @@ const App = () => (
             <Route path="/camp/:campId" element={<CampDetails />} />
             <Route path="/want-to-signout" element={<Signout />} />
             <Route path="/camp/:campId/patients" element={<PatientManagement />} />
+            <Route path="/hidden-doctor-addition" element={<DoctorAdditionPage />} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
           </Routes>
